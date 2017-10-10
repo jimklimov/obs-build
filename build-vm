@@ -740,6 +740,7 @@ vm_first_stage() {
     echo "VM_WATCHDOG='$VM_WATCHDOG'" >> $BUILD_ROOT/.build/build.data
     echo "BUILDENGINE='$BUILDENGINE'" >> $BUILD_ROOT/.build/build.data
     echo "CCACHE='$CCACHE'" >> $BUILD_ROOT/.build/build.data
+    echo "CCACHE_HOST_DIR='$CCACHE_HOST_DIR'" >> $BUILD_ROOT/.build/build.data
     echo "ABUILD_TARGET='$ABUILD_TARGET'" >> $BUILD_ROOT/.build/build.data
     # fallback time for broken hosts
     date '+@%s' > $BUILD_ROOT/.build/.date

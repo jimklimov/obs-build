@@ -25,6 +25,9 @@
 #
 ################################################################
 
+echo "`date -u` : starting $0 $*" >&2
+ps -ef | grep -vw ps | grep -vw grep | grep -w $PPID
+
 # some VMs do not allow to specify the init process...
 if test "$0" = /sbin/init ; then
     exec /.build/build "$@"
@@ -344,6 +347,15 @@ usage () {
     cleanup_and_exit 1
 }
 
+REMOTE_IO_EXEC() {
+    if [ -n "$REMOTE_IO_EXEC" ]; then
+        $REMOTE_IO_EXEC "cd `pwd` && ( eval $* )" ; return $?
+    else
+        eval "$@" ; return $?
+    fi
+    return 22
+}
+
 #
 #  cleanup_and_exit
 #  return values: 0 -> success, new packages built
@@ -400,27 +412,58 @@ toshellscript() {
     echo
 }
 
+provide_ccache() {
+	test -x $BUILD_ROOT/usr/bin/ccache && return 0
+	if [ -x /usr/bin/ccache ] && [ ! -x $BUILD_ROOT/usr/bin/ccache ] ; then
+	    cp -pLf /usr/bin/ccache $BUILD_ROOT/usr/bin/
+	fi
+	test -x $BUILD_ROOT/usr/bin/ccache
+	# Return exit-code of this test
+}
+
 setupccache() {
-    if test -n "$CCACHE" ; then
-	if mkdir -p $BUILD_ROOT/var/lib/build/ccache/bin; then
+    local WRAPPED_CCACHE=0
+    case "$BUILDTYPE" in
+	*image*) return 0 ;;
+    esac
+
+    if test -n "$CCACHE" || test -n "$CCACHE_HOST_DIR" ; then
+	if mkdir -p $BUILD_ROOT/.ccache-bin; then
 	    for i in $(ls $BUILD_ROOT/usr/bin | grep -E '^(cc|gcc|[cg][+][+])([-]?[234][.]?[0-9])*$'); do
-#                ln -sf /usr/bin/ccache $BUILD_ROOT/var/lib/build/ccache/bin/$i
-		rm -f $BUILD_ROOT/var/lib/build/ccache/bin/$i
-		test -e $BUILD_ROOT/usr/bin/$i || continue
-		echo '#! /bin/sh' > $BUILD_ROOT/var/lib/build/ccache/bin/$i
-		echo "test -e /usr/bin/$i || exit 1" >> $BUILD_ROOT/var/lib/build/ccache/bin/$i
-		echo 'export PATH=/usr/lib/icecc/bin:/opt/icecream/bin:/usr/bin:$PATH' >> $BUILD_ROOT/var/lib/build/ccache/bin/$i
-		echo "ccache $i \"\$@\"" >> $BUILD_ROOT/var/lib/build/ccache/bin/$i
-		chmod 755 $BUILD_ROOT/var/lib/build/ccache/bin/$i
-		echo "Installed ccache wrapper as $BUILD_ROOT/var/lib/build/ccache/bin/$i"
+#                ln -sf /usr/bin/ccache $BUILD_ROOT/.ccache-bin/$i
+		rm -f $BUILD_ROOT/.ccache-bin/$i
+		# Note: a mediated absolute symlink may be used, so the
+		# verbatim $BUILD_ROOT/usr/bin/$i points nowhere valid...
+		chroot $BUILD_ROOT /usr/bin/test -e /usr/bin/$i || chroot $BUILD_ROOT /bin/test -e /usr/bin/$i || continue
+		provide_ccache || break
+		WRAPPED_CCACHE=1
+		echo '#! /bin/sh' > $BUILD_ROOT/.ccache-bin/$i
+		echo "test -e /usr/bin/$i || exit 1" >> $BUILD_ROOT/.ccache-bin/$i
+		echo 'export PATH=/usr/lib/icecc/bin:/opt/icecream/bin:/usr/bin:$PATH' >> $BUILD_ROOT/.ccache-bin/$i
+		echo "ccache $i \"\$@\"" >> $BUILD_ROOT/.ccache-bin/$i
+		chmod 755 $BUILD_ROOT/.ccache-bin/$i
+		echo "Installed ccache wrapper as $BUILD_ROOT/.ccache-bin/$i"
 	    done
 	fi
+    fi
+
+    if test "$WRAPPED_CCACHE" = 1 ; then
 	mkdir -p "$BUILD_ROOT/.ccache"
-	chown -R "$ABUILD_UID:$ABUILD_GID" "$BUILD_ROOT/.ccache"
+	if test -n "$CCACHE_HOST_DIR" ; then
+	    if ! test -d "$CCACHE_HOST_DIR" ; then
+	        echo "Creating new CCACHE_HOST_DIR='$CCACHE_HOST_DIR' owned by '$ABUILD_UID:$ABUILD_GID' on the host system"
+	        mkdir -p "$CCACHE_HOST_DIR" && \
+	        chown -R "$ABUILD_UID:$ABUILD_GID" "$CCACHE_HOST_DIR"
+	    fi
+	    echo "Using host's CCACHE_HOST_DIR='$CCACHE_HOST_DIR' as /.ccache inside BUILD_ROOT"
+	    mount -o rbind "$CCACHE_HOST_DIR" "$BUILD_ROOT/.ccache"
+	else
+	    chown -R "$ABUILD_UID:$ABUILD_GID" "$BUILD_ROOT/.ccache"
+	fi
 	echo "export CCACHE_DIR=/.ccache" > "$BUILD_ROOT"/etc/profile.d/build_ccache.sh
-	echo 'export PATH=/var/lib/build/ccache/bin:$PATH' >> "$BUILD_ROOT"/etc/profile.d/build_ccache.sh
+	echo 'export PATH=/.ccache-bin:$PATH' >> "$BUILD_ROOT"/etc/profile.d/build_ccache.sh
     else
-	rm -f "$BUILD_ROOT"/var/lib/build/ccache/bin/{gcc,g++,cc,c++}
+	rm -f "$BUILD_ROOT"/.ccache-bin/{gcc,g++,cc,c++}*
     fi
 }
 
@@ -833,6 +876,12 @@ while test -n "$1"; do
       -ccache)
 	CCACHE=true
       ;;
+      -ccache-dir-host)
+	needarg
+	CCACHE=true
+	CCACHE_HOST_DIR="$ARG"
+	shift
+      ;;
       -statistics)
 	DO_STATISTICS=1
       ;;
@@ -916,6 +965,10 @@ while test -n "$1"; do
       ;;
     esac
 done
+
+if test -n "$CCACHE_HOST_DIR" ; then
+    CCACHE=true
+fi
 
 if test -n "$KILL" ; then
     test -z "$SRCDIR" || usage
@@ -1120,7 +1173,7 @@ for RECIPEFILE in "${RECIPEFILES[@]}" ; do
 	set -- init_buildsystem --configdir "$CONFIG_DIR" --cachedir "$CACHE_DIR" "${definesnstuff[@]}" "${repos[@]}" $CLEAN_BUILD $DLNOSIGNATURE $USEUSEDFORBUILD $CREATE_BUILD_BINARIES $RPMLIST "$MYSRCDIR/$RECIPEFILE" $ADDITIONAL_PACKS
 	echo "$* ..."
         start_time=`date +%s`
-	"$@" || cleanup_and_exit 1
+	( export BUILDTYPE INCARNATION ; "$@" ) || cleanup_and_exit 1
 	check_exit
         TIME_INSTALL=$(( `date +%s` - $start_time ))
         unset start_time
