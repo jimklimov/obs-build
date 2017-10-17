@@ -153,7 +153,6 @@ cleanup_and_exit() {
     # umount so init_buildsystem can be used standalone
 # XXX: use stat -f /dev/pts/ -c %T  to check whether it's mounted and not suppress errors then?
     echo "Unmounting subdirs from BUILD_ROOT='$BUILD_ROOT' ..." >&2
-
     umount -n "$BUILD_ROOT/proc/sys/fs/binfmt_misc" 2> /dev/null || true
     umount -n "$BUILD_ROOT/proc" 2> /dev/null || true
     umount -n "$BUILD_ROOT/dev/pts" 2> /dev/null || true
@@ -176,7 +175,6 @@ cleanup_and_exit() {
 
 clean_build_root() {
     if test -n "$BUILD_ROOT" ; then
-
 	echo "Halting runtime env under BUILD_ROOT='$BUILD_ROOT' ..." >&2
 	chroot "$BUILD_ROOT" /sbin/init 0 2> /dev/null || true
 
@@ -188,6 +186,7 @@ clean_build_root() {
 	umount -n "$BUILD_ROOT/dev" 2> /dev/null || true
 	umount -n "$BUILD_ROOT/mnt" 2> /dev/null || true
 	umount -n "$BUILD_ROOT/.ccache" 2> /dev/null || true
+
 	umount -n -f -l "$BUILD_ROOT/proc/sys/fs/binfmt_misc" 2> /dev/null || true
 	umount -n -f -l "$BUILD_ROOT/proc" 2> /dev/null || true
 	umount -n -f -l "$BUILD_ROOT/dev/pts" 2> /dev/null || true
@@ -211,16 +210,26 @@ clean_build_root() {
 	REMOTE_IO_EXEC rm -rf -- "$BUILD_ROOT/.init_b_cache"
 	REMOTE_IO_EXEC rm -rf -- "$BUILD_ROOT"/.preinstall_image/*
 	REMOTE_IO_EXEC rm -rf -- "$BUILD_ROOT"/.preinstallimage*
-	REMOTE_IO_EXEC rm -rf -- "$BUILD_ROOT/.ccache"
+	REMOTE_IO_EXEC rm -rf -- "$BUILD_ROOT/.ccache-bin"
+# The actual cache can come in handy in the next life...
+#	REMOTE_IO_EXEC rm -rf -- "$BUILD_ROOT/.ccache"
 
-	# Note: we do not always want to wipe an old root -
-	# since working data is prepared here by our caller
+	# Note: removals above do not impact "hidden" files starting with a dot.
+	# We do not always want to completely wipe an old root - since working data
+	# is prepared here by our caller, but sometimes we do. So there's a toggle.
+	# WIPE_BUILD_ROOT==false disables the clause below; other values including
+	# unset or empty enable the clause to move away the old build root and move
+	# back all reasonable .* objects except .n* (avoid stale nfs stuff), and
+	# a "true" value also removes the remnants of the old not-empty build root
+	# as an asynchronous call that does not block the running build (can hang
+	# though, e.g. until the NFS stale-handles expire and are killed off).
+	# Otherwise clean-up is up to volatile storage (ramdisk) or your cron jobs.
 	if test x"$WIPE_BUILD_ROOT" != xfalse && test "`find "$BUILD_ROOT" | wc -l`" -gt 1 ; then
 	    echo "Moving away old BUILD_ROOT='$BUILD_ROOT' to '$BUILD_ROOT.old.$$' ..." >&2
 	    mv -f "$BUILD_ROOT" "$BUILD_ROOT.old.$$" && \
 	    mkdir -p "$BUILD_ROOT" && \
 	    mv -f "$BUILD_ROOT.old.$$"/.[a-mo-zA-Z0-9_\-]* "$BUILD_ROOT/" || true
-	    if test x"$WIPE_BUILD_ROOT" = xtrue ; then
+	    if test x"$WIPE_BUILD_ROOT" = xtrue || test "`find "$BUILD_ROOT" | wc -l`" -le 1 ; then
 		echo "Asynchronously removing '$BUILD_ROOT.old.$$' ..." >&2
 		rm -rf -- "$BUILD_ROOT.old.$$" &
 	    fi
@@ -234,7 +243,8 @@ clean_build_root() {
 	    mount -n -tdevpts -omode=0620,gid=5 none "$BUILD_ROOT/dev/pts"
 	fi
 
-	# These vars are exported from "build" master-script
+	# These vars are exported from "build" master-script and corresponding
+	# files are expected on the filesystem... but we've just deleted it all!
 	test -n "$INCARNATION" && echo "BUILD_INCARNATION=$INCARNATION" > "$BUILD_ROOT/.buildenv"
 	test "$BUILDTYPE" = preinstallimage && mkdir -p "$BUILD_ROOT/.preinstall_image"
 
@@ -552,6 +562,7 @@ if test -e "$BUILD_IS_RUNNING" ; then
     echo "Halting runtime env under BUILD_ROOT='$BUILD_ROOT' ..." >&2
     chroot "$BUILD_ROOT" /sbin/init 0 2> /dev/null || true
 
+    echo "Unmounting subdirs from BUILD_ROOT='$BUILD_ROOT' ..." >&2
     umount -n $BUILD_ROOT/proc/sys/fs/binfmt_misc 2> /dev/null || true
     umount -n $BUILD_ROOT/proc 2> /dev/null
     umount -n $BUILD_ROOT/dev/pts 2> /dev/null
