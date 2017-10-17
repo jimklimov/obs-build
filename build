@@ -461,6 +461,7 @@ setupccache() {
 	    chown -R "$ABUILD_UID:$ABUILD_GID" "$BUILD_ROOT/.ccache"
 	fi
 	echo "export CCACHE_DIR=/.ccache" > "$BUILD_ROOT"/etc/profile.d/build_ccache.sh
+	echo "export CCACHE_LOGFILE=/.build.log.ccache" > "$BUILD_ROOT"/etc/profile.d/build_ccache.sh
 	echo 'export PATH=/.ccache-bin:$PATH' >> "$BUILD_ROOT"/etc/profile.d/build_ccache.sh
     else
 	rm -f "$BUILD_ROOT"/.ccache-bin/{gcc,g++,cc,c++}*
@@ -1423,5 +1424,23 @@ fi
 echo
 echo "$HOST finished \"build $RECIPEFILE\" at `date --utc`."
 echo
+
+if [ -s "$BUILD_ROOT/.build.log.ccache" ] ; then
+    echo "Dumping current run's CCACHE log:"
+    echo "======="
+    cat "$BUILD_ROOT/.build.log.ccache"
+    echo "======="
+
+    if [ -x $BUILD_ROOT/usr/bin/ccache ] && [ -s "$BUILD_ROOT"/etc/profile.d/build_ccache.sh ] ; then
+        echo
+        echo "CCACHE stats after this run:"
+        echo
+        chroot "$BUILD_ROOT" /usr/bin/bash -c ". /etc/profile.d/build_ccache.sh && /usr/bin/ccache -s"
+    fi
+
+    echo
+    echo "$HOST finished \"build $RECIPEFILE\" augmented by CCACHE at `date --utc`."
+    echo
+fi
 
 cleanup_and_exit "$exitcode"
