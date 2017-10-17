@@ -27,6 +27,9 @@
 #
 ################################################################
 
+echo "`date -u` : starting $0 $*" >&2
+ps -ef | grep -vw ps | grep -vw grep | grep -w $PPID
+
 #
 # needed globals variables
 #
