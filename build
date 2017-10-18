@@ -465,43 +465,42 @@ setupccache() {
     # the same cache directory can be shared between OBS workers.
     local WRAPPED_CCACHE=0
     case "$BUILDTYPE" in
-	*image*) return 0 ;;
+        *image*) return 0 ;;
     esac
 
     if test -n "$CCACHE" || test -n "$CCACHE_HOST_DIR" ; then
-	if mkdir -p $BUILD_ROOT/.ccache-bin; then
-	    for i in $(ls $BUILD_ROOT/usr/bin | grep -E '^(cc|gcc|[cg][+][+])([-]?[234][.]?[0-9])*$'); do
-#                ln -sf /usr/bin/ccache $BUILD_ROOT/.ccache-bin/$i
-		rm -f $BUILD_ROOT/.ccache-bin/$i
-		# Note: a mediated absolute symlink may be used, so the
-		# verbatim $BUILD_ROOT/usr/bin/$i points nowhere valid...
-		chroot $BUILD_ROOT /usr/bin/test -e /usr/bin/$i || chroot $BUILD_ROOT /bin/test -e /usr/bin/$i || continue
-		provide_ccache || break
-		WRAPPED_CCACHE=1
-		echo '#! /bin/sh' > $BUILD_ROOT/.ccache-bin/$i
-		echo "test -e /usr/bin/$i || exit 1" >> $BUILD_ROOT/.ccache-bin/$i
-		echo 'export PATH=/usr/lib/icecc/bin:/opt/icecream/bin:/usr/bin:$PATH' >> $BUILD_ROOT/.ccache-bin/$i
-		echo "ccache $i \"\$@\"" >> $BUILD_ROOT/.ccache-bin/$i
-		chmod 755 $BUILD_ROOT/.ccache-bin/$i
-		echo "Installed ccache wrapper as $BUILD_ROOT/.ccache-bin/$i"
-	    done
-	fi
+        if mkdir -p $BUILD_ROOT/.ccache-bin; then
+            for i in $(ls $BUILD_ROOT/usr/bin | grep -E '^(cc|gcc|[cg][+][+])([-]?[234][.]?[0-9])*$'); do
+                rm -f $BUILD_ROOT/.ccache-bin/$i
+                # Note: a mediated absolute symlink may be used, so the
+                # verbatim $BUILD_ROOT/usr/bin/$i points nowhere valid...
+                chroot $BUILD_ROOT /usr/bin/test -e /usr/bin/$i || chroot $BUILD_ROOT /bin/test -e /usr/bin/$i || continue
+                provide_ccache || break
+                WRAPPED_CCACHE=1
+                echo '#! /bin/sh' > $BUILD_ROOT/.ccache-bin/$i
+                echo "test -e /usr/bin/$i || exit 1" >> $BUILD_ROOT/.ccache-bin/$i
+                echo 'export PATH=/usr/lib/icecc/bin:/opt/icecream/bin:/usr/bin:$PATH' >> $BUILD_ROOT/.ccache-bin/$i
+                echo "ccache $i \"\$@\"" >> $BUILD_ROOT/.ccache-bin/$i
+                chmod 755 $BUILD_ROOT/.ccache-bin/$i
+                echo "Installed ccache wrapper as $BUILD_ROOT/.ccache-bin/$i"
+            done
+        fi
     fi
 
     if test "$WRAPPED_CCACHE" = 1 ; then
-	mkdir -p "$BUILD_ROOT/.ccache"
-	if test -n "$CCACHE_HOST_DIR" ; then
-	    if ! test -d "$CCACHE_HOST_DIR" ; then
-	        echo "Creating new CCACHE_HOST_DIR='$CCACHE_HOST_DIR' owned by '$ABUILD_UID:$ABUILD_GID' on the host system"
-	        mkdir -p "$CCACHE_HOST_DIR" && \
-	        chown -R "$ABUILD_UID:$ABUILD_GID" "$CCACHE_HOST_DIR"
-	    fi
-	    echo "Using host's CCACHE_HOST_DIR='$CCACHE_HOST_DIR' as /.ccache inside BUILD_ROOT"
-	    mount -o rbind "$CCACHE_HOST_DIR" "$BUILD_ROOT/.ccache"
-	else
-	    chown -R "$ABUILD_UID:$ABUILD_GID" "$BUILD_ROOT/.ccache"
-	fi
-	cat << EOF > "$BUILD_ROOT"/etc/profile.d/build_ccache.sh
+        mkdir -p "$BUILD_ROOT/.ccache"
+        if test -n "$CCACHE_HOST_DIR" ; then
+            if ! test -d "$CCACHE_HOST_DIR" ; then
+                echo "Creating new CCACHE_HOST_DIR='$CCACHE_HOST_DIR' owned by '$ABUILD_UID:$ABUILD_GID' on the host system"
+                mkdir -p "$CCACHE_HOST_DIR" && \
+                chown -R "$ABUILD_UID:$ABUILD_GID" "$CCACHE_HOST_DIR"
+            fi
+            echo "Using host's CCACHE_HOST_DIR='$CCACHE_HOST_DIR' as /.ccache inside BUILD_ROOT"
+            mount -o rbind "$CCACHE_HOST_DIR" "$BUILD_ROOT/.ccache"
+        else
+            chown -R "$ABUILD_UID:$ABUILD_GID" "$BUILD_ROOT/.ccache"
+        fi
+        cat << EOF > "$BUILD_ROOT"/etc/profile.d/build_ccache.sh
 echo 'Sourcing /etc/profile.d/build_ccache.sh...' >&2
 CCACHE_DIR="/.ccache"
 CCACHE_LOGFILE="/.build.log.ccache"
@@ -511,7 +510,7 @@ echo "CCache state before build:"
 ccache -s
 EOF
     else
-	rm -f "$BUILD_ROOT"/.ccache-bin/{gcc,g++,cc,c++}*
+        rm -f "$BUILD_ROOT"/.ccache-bin/{gcc,g++,cc,c++}*
     fi
 }
 
