@@ -506,8 +506,11 @@ CCACHE_DIR="/.ccache"
 CCACHE_LOGFILE="/.build.log.ccache"
 PATH="/.ccache-bin:\$PATH"
 export PATH CCACHE_LOGFILE CCACHE_DIR
-echo "CCache state before build:"
-ccache -s
+if test -n "\$NO_CCACHE_STATS" ; then
+    echo "CCache state before build:"
+    ccache -s
+fi
+true
 EOF
     else
         rm -f "$BUILD_ROOT"/.ccache-bin/{gcc,g++,cc,c++,clang,clang++}*
@@ -1497,7 +1500,7 @@ if [ -s "$BUILD_ROOT/.build.log.ccache" ] && [ "$DO_CCACHE_STATISTICS" = 1 ] ; t
         echo
         echo "CCACHE stats after this run:"
         echo
-        chroot "$BUILD_ROOT" /usr/bin/bash -c ". /etc/profile.d/build_ccache.sh && /usr/bin/ccache -s"
+        chroot "$BUILD_ROOT" /usr/bin/bash -c "NO_CCACHE_STATS=yes ; . /etc/profile.d/build_ccache.sh && /usr/bin/ccache -s"
     fi
 
     echo
