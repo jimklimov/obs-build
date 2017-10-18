@@ -43,7 +43,7 @@ recipe_prepare_dsc() {
     chown -R "$ABUILD_UID:$ABUILD_GID" "$BUILD_ROOT$TOPDIR"
     if [ -s "$BUILD_ROOT"/etc/profile.d/build_ccache.sh ]; then
 	grep CCACHE_BASEDIR "$BUILD_ROOT"/etc/profile.d/build_ccache.sh > /dev/null || \
-	echo "export CCACHE_BASEDIR='$TOPDIR/BUILD'" > "$BUILD_ROOT"/etc/profile.d/build_ccache.sh
+	echo "export CCACHE_BASEDIR='$TOPDIR/BUILD'" >> "$BUILD_ROOT"/etc/profile.d/build_ccache.sh
     fi
     DEB_TRANSFORM=
     DEB_SOURCEDIR="$TOPDIR/SOURCES"
