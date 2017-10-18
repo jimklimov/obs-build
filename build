@@ -506,10 +506,10 @@ CCACHE_DIR="/.ccache"
 CCACHE_LOGFILE="/.build.log.ccache"
 PATH="/.ccache-bin:\$PATH"
 export PATH CCACHE_LOGFILE CCACHE_DIR
-if test -n "\$NO_CCACHE_STATS" ; then
-    echo "CCache state before build:"
+if test -z "\$NO_CCACHE_STATS" || test x"\$NO_CCACHE_STATS" != xyes ; then
+    echo "CCache stats before build:"
     ccache -s
-fi
+fi >&2
 true
 EOF
     else
@@ -1490,11 +1490,13 @@ echo
 echo "$HOST finished \"build $RECIPEFILE\" at `date --utc`."
 echo
 
-if [ -s "$BUILD_ROOT/.build.log.ccache" ] && [ "$DO_CCACHE_STATISTICS" = 1 ] ; then
-    echo "Dumping current run's CCACHE log:"
-    echo "======="
-    cat "$BUILD_ROOT/.build.log.ccache"
-    echo "======="
+if [ "$DO_CCACHE_STATISTICS" = 1 ] ; then
+    if [ -s "$BUILD_ROOT/.build.log.ccache" ] ; then
+        echo "Dumping current run's CCACHE log:"
+        echo "======="
+        cat "$BUILD_ROOT/.build.log.ccache"
+        echo "======="
+    fi
 
     if [ -x $BUILD_ROOT/usr/bin/ccache ] && [ -s "$BUILD_ROOT"/etc/profile.d/build_ccache.sh ] ; then
         echo
