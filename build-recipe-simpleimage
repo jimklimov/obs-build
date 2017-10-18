@@ -99,7 +99,7 @@ recipe_build_simpleimage() {
     fi
     echo "`date -u`: simple image created."
 
-    DEST="$BUILD_ROOT$TOPDIR/OTHER/"
+    DEST="$BUILD_ROOT$TOPDIR/OTHER"
     mkdir -p "$DEST"
 
     echo

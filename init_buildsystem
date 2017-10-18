@@ -201,7 +201,7 @@ clean_build_root() {
 	    echo "Removing stuff from BUILD_ROOT='$BUILD_ROOT' ..." >&2
 	fi
 	REMOTE_IO_EXEC rm -rf -- "$BUILD_ROOT"/* 2> /dev/null || true
-	chattr -a -A -i -R -- "$BUILD_ROOT" 2> /dev/null || true
+	REMOTE_IO_EXEC chattr -a -A -i -R -- "$BUILD_ROOT" 2> /dev/null || true
 	REMOTE_IO_EXEC rm -rf -- "$BUILD_ROOT"/*
 	REMOTE_IO_EXEC rm -rf -- "$BUILD_ROOT/.build"
 	REMOTE_IO_EXEC rm -rf -- "$BUILD_ROOT"/.build.kernel.*
@@ -229,7 +229,7 @@ clean_build_root() {
 	    mv -f "$BUILD_ROOT" "$BUILD_ROOT.old.$$" && \
 	    mkdir -p "$BUILD_ROOT" && \
 	    mv -f "$BUILD_ROOT.old.$$"/.[a-mo-zA-Z0-9_\-]* "$BUILD_ROOT/" || true
-	    if test x"$WIPE_BUILD_ROOT" = xtrue ; then
+	    if test x"$WIPE_BUILD_ROOT" = xtrue || test "`find "$BUILD_ROOT" | wc -l`" -le 1 ; then
 		echo "Asynchronously removing '$BUILD_ROOT.old.$$' ..." >&2
 		rm -rf -- "$BUILD_ROOT.old.$$" &
 	    fi
