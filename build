@@ -537,10 +537,10 @@ CCACHE_DIR="/.ccache"
 CCACHE_LOGFILE="/.build.log.ccache"
 PATH="/.ccache-bin:\$PATH"
 export PATH CCACHE_LOGFILE CCACHE_DIR
-if test -z "\$NO_CCACHE_STATS" || test x"\$NO_CCACHE_STATS" = xyes ; then
-    echo "CCache state before build:"
+if test -z "\$NO_CCACHE_STATS" || test x"\$NO_CCACHE_STATS" != xyes ; then
+    echo "CCache stats before build:"
     ccache -s
-fi
+fi >&2
 true
 EOF
     else
