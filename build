@@ -531,9 +531,15 @@ setupccache() {
         else
             chown -R "$ABUILD_UID:$ABUILD_GID" "$BUILD_ROOT/.ccache"
         fi
-        echo "export CCACHE_DIR=/.ccache" > "$BUILD_ROOT"/etc/profile.d/build_ccache.sh
-        echo "export CCACHE_LOGFILE=/.build.log.ccache" > "$BUILD_ROOT"/etc/profile.d/build_ccache.sh
-        echo 'export PATH=/.ccache-bin:$PATH' >> "$BUILD_ROOT"/etc/profile.d/build_ccache.sh
+        cat << EOF > "$BUILD_ROOT"/etc/profile.d/build_ccache.sh
+echo 'Sourcing /etc/profile.d/build_ccache.sh...' >&2
+CCACHE_DIR="/.ccache"
+CCACHE_LOGFILE="/.build.log.ccache"
+PATH="/.ccache-bin:\$PATH"
+export PATH CCACHE_LOGFILE CCACHE_DIR
+echo "CCache state before build:"
+ccache -s
+EOF
     else
         rm -f "$BUILD_ROOT"/.ccache-bin/{gcc,g++,cc,c++,clang,clang++}*
     fi
