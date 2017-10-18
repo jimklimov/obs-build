@@ -110,6 +110,10 @@ while test -n "$1" ; do
 	    shift
 	    DLNOSIGNATURE="--nosignature"
 	    ;;
+	--remote-io-exec)
+	    REMOTE_IO_EXEC="$2"
+	    shift 2
+	    ;;
 	*)
 	    break
 	    ;;
@@ -122,6 +126,15 @@ PKGS=("$@")
 #
 
 REMOTE_IO_EXEC() {
+    # This helper can offload intensive and dumb I/O operations like
+    # (un-)tarballing and (de-)compression from workers using shared
+    # media (e.g. NFS build roots) to a remote system with higher
+    # performance in this regard, by setting this option:
+    #   export REMOTE_IO_EXEC="ssh root@nfsserver"
+    # in the workers' /etc/sysconfig/obs-worker files. This also
+    # assumes that the apparent filesystem paths are the same on both
+    # the worker and remote helper - e.g. /mnt/nas/workerX/root_Y/
+    # and that appropriate ssh-key trusts have been set up.
     if [ -n "$REMOTE_IO_EXEC" ]; then
         $REMOTE_IO_EXEC "cd `pwd` && $*" ; return $?
     else
@@ -133,12 +146,13 @@ REMOTE_IO_EXEC() {
 cleanup_and_exit() {
     trap EXIT
     test "$BUILD_ROOT" = / -a -n "$browner" && chown "$browner" "$BUILD_ROOT"
+
+    echo "Halting runtime env under BUILD_ROOT='$BUILD_ROOT' ..." >&2
+    chroot "$BUILD_ROOT" /sbin/init 0 2> /dev/null || true
+
     # umount so init_buildsystem can be used standalone
 # XXX: use stat -f /dev/pts/ -c %T  to check whether it's mounted and not suppress errors then?
     echo "Unmounting subdirs from BUILD_ROOT='$BUILD_ROOT' ..." >&2
-
-    chroot "$BUILD_ROOT" /sbin/init 0 2> /dev/null || true
-
     umount -n "$BUILD_ROOT/proc/sys/fs/binfmt_misc" 2> /dev/null || true
     umount -n "$BUILD_ROOT/proc" 2> /dev/null || true
     umount -n "$BUILD_ROOT/dev/pts" 2> /dev/null || true
@@ -161,7 +175,6 @@ cleanup_and_exit() {
 
 clean_build_root() {
     if test -n "$BUILD_ROOT" ; then
-
 	echo "Halting runtime env under BUILD_ROOT='$BUILD_ROOT' ..." >&2
 	chroot "$BUILD_ROOT" /sbin/init 0 2> /dev/null || true
 
@@ -173,6 +186,7 @@ clean_build_root() {
 	umount -n "$BUILD_ROOT/dev" 2> /dev/null || true
 	umount -n "$BUILD_ROOT/mnt" 2> /dev/null || true
 	umount -n "$BUILD_ROOT/.ccache" 2> /dev/null || true
+
 	umount -n -f -l "$BUILD_ROOT/proc/sys/fs/binfmt_misc" 2> /dev/null || true
 	umount -n -f -l "$BUILD_ROOT/proc" 2> /dev/null || true
 	umount -n -f -l "$BUILD_ROOT/dev/pts" 2> /dev/null || true
@@ -196,10 +210,20 @@ clean_build_root() {
 	REMOTE_IO_EXEC rm -rf -- "$BUILD_ROOT/.init_b_cache"
 	REMOTE_IO_EXEC rm -rf -- "$BUILD_ROOT"/.preinstall_image/*
 	REMOTE_IO_EXEC rm -rf -- "$BUILD_ROOT"/.preinstallimage*
-	REMOTE_IO_EXEC rm -rf -- "$BUILD_ROOT/.ccache"
+	REMOTE_IO_EXEC rm -rf -- "$BUILD_ROOT/.ccache-bin"
+# The actual cache can come in handy in the next life...
+#	REMOTE_IO_EXEC rm -rf -- "$BUILD_ROOT/.ccache"
 
-	# Note: we do not always want to wipe an old root -
-	# since working data is prepared here by our caller
+	# Note: removals above do not impact "hidden" files starting with a dot.
+	# We do not always want to completely wipe an old root - since working data
+	# is prepared here by our caller, but sometimes we do. So there's a toggle.
+	# WIPE_BUILD_ROOT==false disables the clause below; other values including
+	# unset or empty enable the clause to move away the old build root and move
+	# back all reasonable .* objects except .n* (avoid stale nfs stuff), and
+	# a "true" value also removes the remnants of the old not-empty build root
+	# as an asynchronous call that does not block the running build (can hang
+	# though, e.g. until the NFS stale-handles expire and are killed off).
+	# Otherwise clean-up is up to volatile storage (ramdisk) or your cron jobs.
 	if test x"$WIPE_BUILD_ROOT" != xfalse && test "`find "$BUILD_ROOT" | wc -l`" -gt 1 ; then
 	    echo "Moving away old BUILD_ROOT='$BUILD_ROOT' to '$BUILD_ROOT.old.$$' ..." >&2
 	    mv -f "$BUILD_ROOT" "$BUILD_ROOT.old.$$" && \
@@ -219,7 +243,8 @@ clean_build_root() {
 	    mount -n -tdevpts -omode=0620,gid=5 none "$BUILD_ROOT/dev/pts"
 	fi
 
-	# These vars are exported from "build" master-script
+	# These vars are exported from "build" master-script and corresponding
+	# files are expected on the filesystem... but we've just deleted it all!
 	test -n "$INCARNATION" && echo "BUILD_INCARNATION=$INCARNATION" > "$BUILD_ROOT/.buildenv"
 	test "$BUILDTYPE" = preinstallimage && mkdir -p "$BUILD_ROOT/.preinstall_image"
 
@@ -259,12 +284,6 @@ preinstall_image() {
 	echo "Unpacking preinstall image using REMOTE_IO_EXEC helper"
     fi
     # pipe output through perl to print a dot every 1000 lines
-#    if ! $TAR -z --exclude .build --exclude .init_b_cache -f "$BUILD_ROOT/.init_b_cache/rpms/$1" -v > >(tee "$BUILD_ROOT/.preinstallimage.unpack" | perl -e '$|=1; my $done=0; $done++ % 1000 or print "." while <STDIN>; print "\n";')  2>&1 ; then
-#    if [ -n "$REMOTE_IO_EXEC" ]; then
-#	$REMOTE_IO_EXEC "cd `pwd` && $TAR -z --exclude .build --exclude .init_b_cache -f '$BUILD_ROOT/.init_b_cache/rpms/$1' -v" ; RES_TAR=$?
-#    else
-#	$TAR -z --exclude .build --exclude .init_b_cache -f "$BUILD_ROOT/.init_b_cache/rpms/$1" -v ; RES_TAR=$?
-#    fi > >(tee "$BUILD_ROOT/.preinstallimage.unpack" | perl -e '$|=1; my $done=0; $done++ % 1000 or print "." while <STDIN>; print "\n";')  2>&1
     { REMOTE_IO_EXEC $TAR -z --exclude .build --exclude .init_b_cache -f "$BUILD_ROOT/.init_b_cache/rpms/$1" -v ; RES_TAR=$?; } \
     > >(tee "$BUILD_ROOT/.preinstallimage.unpack" | perl -e '$|=1; my $done=0; $done++ % 1000 or print "." while <STDIN>; print "\n";')  2>&1
     if [ $? != 0 ] || [ $RES_TAR != 0 ] ; then
@@ -543,6 +562,7 @@ if test -e "$BUILD_IS_RUNNING" ; then
     echo "Halting runtime env under BUILD_ROOT='$BUILD_ROOT' ..." >&2
     chroot "$BUILD_ROOT" /sbin/init 0 2> /dev/null || true
 
+    echo "Unmounting subdirs from BUILD_ROOT='$BUILD_ROOT' ..." >&2
     umount -n $BUILD_ROOT/proc/sys/fs/binfmt_misc 2> /dev/null || true
     umount -n $BUILD_ROOT/proc 2> /dev/null
     umount -n $BUILD_ROOT/dev/pts 2> /dev/null
@@ -626,7 +646,8 @@ else
 	    cleanup_and_exit 1
 	fi
     else
-	if test 0 = 1 && test -n "${PKGS[1]}" ; then
+	true || \
+	if test -n "${PKGS[1]}" ; then
 	    ( unset PKGS[0]
 	      set -o pipefail
 	      set -x
