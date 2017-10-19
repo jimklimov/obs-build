@@ -124,6 +124,9 @@ dsc_build() {
 	# to run the checks (consume time) and leave a warning in the build log.
 	# This can be configured per-worker, so e.g. faster x86 builds suffer
 	# the overhead while slower ARMs do not.
+	# Again: this toggle is only for experimental on-site deployments.
+	# It should not be enabled in production - widely published packages
+	# (and their recipes) should be lint-clean!
 	case "$OBS_DISABLE_DSC_LINTIAN" in
 	    yes|skip|true) # don't incur overhead of even probing for the tool
 	        if test "$BUILD_SUCCEEDED" = true -a "$DO_CHECKS" != "false" ; then
