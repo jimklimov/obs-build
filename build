@@ -558,7 +558,7 @@ EOF
             touch "$BUILD_ROOT/.build.log.ccache"
             chown "$ABUILD_UID:$ABUILD_GID" "$BUILD_ROOT/.build.log.ccache"
             chmod 664 "$BUILD_ROOT/.build.log.ccache"
-            echo 'CCACHE_LOGFILE="/.build.log.ccache" ; export CCACHE_LOGFILE' >> /etc/profile.d/build_ccache.sh
+            echo 'CCACHE_LOGFILE="/.build.log.ccache" ; export CCACHE_LOGFILE' >> "$BUILD_ROOT"/etc/profile.d/build_ccache.sh
         fi
 
         if [ "$DO_CCACHE_STATISTICS" = 1 ] ; then
