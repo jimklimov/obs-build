@@ -565,7 +565,7 @@ EOF
             chroot "$BUILD_ROOT" /bin/sh -c "PROFILE_CCACHE_STATS=yes ; . /etc/profile.d/build_ccache.sh"
         fi
     else
-        rm -f "$BUILD_ROOT"/.ccache-bin/{gcc,g++,cc,c++,clang,clang++}*
+        rm -f "$BUILD_ROOT"/.ccache-bin/{gcc,g++,cc,c++,clang,clang++}{,-*}
     fi
 }
 
