@@ -452,12 +452,42 @@ toshellscript() {
 }
 
 provide_ccache() {
-	test -x $BUILD_ROOT/usr/bin/ccache && return 0
-	if [ -x /usr/bin/ccache ] && [ ! -x $BUILD_ROOT/usr/bin/ccache ] ; then
-	    cp -pLf /usr/bin/ccache $BUILD_ROOT/usr/bin/
-	fi
-	test -x $BUILD_ROOT/usr/bin/ccache
-	# Return exit-code of this test
+    # If called, ensure a "/.ccache-bin/ccache" is present in the BUILD_ROOT.
+    # It may be a link to "/usr/bin/ccache" installed via packaging, or as a
+    # fallback only, the worker host's copy can be used, from default location
+    # (if CCACHE_HOST_BIN==yes), or from absolute-path location pointed to by
+    # the CCACHE_HOST_BIN value. This routine is called from setupccache(),
+    # and only if CCACHE support is enabled for this build.
+
+    # Fasttrack if already set up
+    [ -x "$BUILD_ROOT/.ccache-bin/ccache" ] && return 0
+
+    # Setup is indeed needed... do some sanity check first
+    [ -n "$BUILD_ROOT" ] && [ -d "$BUILD_ROOT" ] || return
+    mkdir -p $BUILD_ROOT/.ccache-bin
+    rm -f "$BUILD_ROOT/.ccache-bin/ccache" 2>dev/null || true
+
+    # First try using a binary that may already exist in the build root via
+    # packaging as /usr/bin/ccache. Note that this path can be an absolute
+    # symlink, so can be misleading in the host environment - so we must
+    # chroot before evaluating it.
+    if chroot "$BUILD_ROOT" /usr/bin/test -x /usr/bin/ccache || \
+       chroot "$BUILD_ROOT" /bin/test -x /usr/bin/ccache ; then
+        ln -s "../usr/bin/ccache" "$BUILD_ROOT/.ccache-bin/ccache"
+    else
+        case "$CCACHE_HOST_BIN" in
+            yes|true|on) CCACHE_HOST_BIN="/usr/bin/ccache" ;;
+            /*) ;;
+            *|"") return 1 ;;
+        esac
+
+        if [ -n "$CCACHE_HOST_BIN" ] && [ -x "$CCACHE_HOST_BIN" ] ; then
+            cp -pLf "$CCACHE_HOST_BIN" "$BUILD_ROOT/.ccache-bin/"
+        fi
+    fi
+
+    test -s "$BUILD_ROOT/.ccache-bin/ccache" && test -x "$BUILD_ROOT/.ccache-bin/ccache"
+    # Return exit-code of this test
 }
 
 setupccache() {
@@ -477,15 +507,16 @@ setupccache() {
         if mkdir -p $BUILD_ROOT/.ccache-bin; then
             for i in $(ls $BUILD_ROOT/usr/bin | grep -E '^(cc|gcc|[cg][+][+]|clang|clang[+][+])([-]?[234][.]?[0-9])*$'); do
                 rm -f $BUILD_ROOT/.ccache-bin/$i
-                # Note: a mediated absolute symlink may be used, so the
-                # verbatim $BUILD_ROOT/usr/bin/$i points nowhere valid...
+                # Note: a mediated absolute symlink may be used in the
+                # build-root, so the verbatim $BUILD_ROOT/usr/bin/$i
+                # points nowhere valid in the host environment...
                 chroot $BUILD_ROOT /usr/bin/test -e /usr/bin/$i || chroot $BUILD_ROOT /bin/test -e /usr/bin/$i || continue
                 provide_ccache || break
                 WRAPPED_CCACHE=1
                 echo '#! /bin/sh' > $BUILD_ROOT/.ccache-bin/$i
                 echo "test -e /usr/bin/$i || exit 1" >> $BUILD_ROOT/.ccache-bin/$i
                 echo 'export PATH=/usr/lib/icecc/bin:/opt/icecream/bin:/usr/bin:$PATH' >> $BUILD_ROOT/.ccache-bin/$i
-                echo "exec ccache $i \"\$@\"" >> $BUILD_ROOT/.ccache-bin/$i
+                echo "exec /.ccache-bin/ccache $i \"\$@\"" >> $BUILD_ROOT/.ccache-bin/$i
                 chmod 755 $BUILD_ROOT/.ccache-bin/$i
                 echo "Installed ccache wrapper as $BUILD_ROOT/.ccache-bin/$i"
             done
@@ -1520,11 +1551,11 @@ if [ "$DO_CCACHE_STATISTICS" = 1 ] ; then
         echo "======="
     fi
 
-    if [ -x $BUILD_ROOT/usr/bin/ccache ] && [ -s "$BUILD_ROOT"/etc/profile.d/build_ccache.sh ] ; then
+    if [ -x $BUILD_ROOT/.ccache-bin/ccache ] && [ -s "$BUILD_ROOT"/etc/profile.d/build_ccache.sh ] ; then
         echo
         echo "CCACHE stats after this run:"
         echo
-        chroot "$BUILD_ROOT" /bin/sh -c "PROFILE_CCACHE_STATS=no ; . /etc/profile.d/build_ccache.sh && CCACHE_LOGFILE='' /usr/bin/ccache -s"
+        chroot "$BUILD_ROOT" /bin/sh -c "PROFILE_CCACHE_STATS=no ; . /etc/profile.d/build_ccache.sh && CCACHE_LOGFILE='' /.ccache-bin/ccache -s"
     fi
 
     echo
