@@ -879,6 +879,14 @@ if test ! -e $BUILD_ROOT/installed-pkg -a ! -e $BUILD_ROOT/.build/init_buildsyst
     for PKG in $PACKAGES_TO_PREINSTALL_FILTERED ; do
 	progress_step PACKAGES_TO_PREINSTALL_FILTERED
 	preinstall ${PKG##*/}
+	case "${PKG##*/}" in
+	    user-setup) PKG=ipc-accounts
+		# if ls "$BUILD_ROOT/.init_b_cache/rpms/"$PKG* >/dev/null 2>/dev/null ; then
+		    : > $BUILD_ROOT/.init_b_cache/scripts/$PKG.run || true
+		    printf "ATTEMPT "; preinstall $PKG && pkg_runscripts || true
+		# fi
+		;;
+	esac
     done
     echo
     if test -n "$PREPARE_VM" ; then
@@ -1128,6 +1136,12 @@ test -e $BUILD_ROOT/etc/nsswitch.conf && {
     cat $BUILD_ROOT/etc/nsswitch.conf | sed -e"s:nis::g" > $BUILD_ROOT/etc/nsswitch.conf.tmp
     mv $BUILD_ROOT/etc/nsswitch.conf.tmp $BUILD_ROOT/etc/nsswitch.conf
 }
+
+if test -f "$BUILD_ROOT/.preinstall_image/ipc-accounts" ; then
+    echo "Forgetting ipc-accounts packaging metadata from preinstall image contents..."
+    PKG=ipc-accounts pkg_erase
+    rm -f "$BUILD_ROOT/.preinstall_image/ipc-accounts"
+fi
 
 #
 # create some default directories and files
