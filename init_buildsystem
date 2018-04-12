@@ -1137,7 +1137,7 @@ test -e $BUILD_ROOT/etc/nsswitch.conf && {
     mv $BUILD_ROOT/etc/nsswitch.conf.tmp $BUILD_ROOT/etc/nsswitch.conf
 }
 
-if test -f "$BUILD_ROOT/.preinstall_image/ipc-accounts" ; then
+if test -f "$BUILD_ROOT/.preinstall_image/ipc-accounts" && test x"$BUILDTYPE" = xpreinstallimage ; then
     echo "Forgetting ipc-accounts packaging metadata from preinstall image contents..."
     PKG=ipc-accounts pkg_erase
     rm -f "$BUILD_ROOT/.preinstall_image/ipc-accounts"
